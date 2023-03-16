@@ -22,7 +22,7 @@ When Netrun identifies that a device's OS version is greater than what the Netru
 Clone the repository:
 
 ```bash
-  git clone https://github.com/example/netrun.git
+  git clone https://github.com/netman-su/netrun-app.git
 ```
 
 Install the dependencies:
