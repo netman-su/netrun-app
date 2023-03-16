@@ -1,0 +1,63 @@
+{
+    "cisco_ios": {
+        "type": "cisco_ios",
+        "show_run": "show running-config view full",
+        "show_version": "show version | in Software,",
+        "show_model": "show inventory | in PID:",
+        "software_track": true,
+        "parse_logic": {
+            "model_position": "PID: ([\\w-]+)",
+            "serial_position": "SN: ([\\w].\\S+)",
+            "version_position": "\\d{1,2}\\.\\d{1,2}(\\.\\d{1,2}[a-zA-Z]?)?(\\(\\d{1,2}\\))?[a-zA-Z]?"
+        }
+    },
+    "cisco_xe": {
+        "type": "cisco_xe",
+        "show_run": "show running-config view full",
+        "show_version": "show version | in Cisco IOS XE Software",
+        "show_model": "show inventory | in PID:",
+        "software_track": true,
+        "parse_logic": {
+            "model_position": "PID: ([\\w-]+)",
+            "serial_position": "SN: ([\\w].\\S+)",
+            "version_position": "\\d{1,2}\\.\\d{1,2}(\\.\\d{1,2}[a-zA-Z]?)?(\\(\\d{1,2}\\))?[a-zA-Z]?"
+        }
+    },
+    "cisco_nxos": {
+        "type": "cisco_nxos",
+        "show_run": "show running-config",
+        "show_version": "show version | in NXOS:",
+        "show_model": "show inventory | in PID:",
+        "software_track": true,
+        "parse_logic": {
+            "model_position": "PID: ([\\w-]+)",
+            "serial_position": "SN: ([\\w].\\S+)",
+            "version_position": "\\d{1,2}\\.\\d{1,2}(\\.\\d{1,2}[a-zA-Z]?)?(\\(\\d{1,2}\\))?[a-zA-Z]?"
+        }
+    },
+    "paloalto_panos": {
+        "type": "paloalto_panos",
+        "show_run": "show config running",
+        "show_version": "show system info | match sw-version:",
+        "show_model": "show system info | match \"model:\\|serial:\"",
+        "software_track": false,
+        "parse_logic": {
+            "model_position": "model: ([\\w-]+)",
+            "serial_position": "serial: ([\\w].\\S+)",
+            "version_position": "\\d{1,2}\\.\\d{1,2}(\\.\\d{1,2}[a-zA-Z]?)?(\\(\\d{1,2}\\))?[a-zA-Z]?"
+            
+        }
+    },
+    "juniper_junos": {
+        "type": "juniper_junos",
+        "show_run": "show configuration",
+        "show_version": "show version | match boot",
+        "show_model": "show version | match model",
+        "software_track": false,
+        "parse_logic": {
+            "model_position": "model: ([\\w-]+)",
+            "serial_position": "serial: ([\\w].\\S+)",
+            "version_position": "\\d{1,2}\\.\\d{1,2}(\\.\\d{1,2}[a-zA-Z]?)?(\\(\\d{1,2}\\))?[a-zA-Z]?"
+        }
+    }
+}

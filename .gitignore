@@ -1,0 +1,6 @@
+__pycache__
+.vscode
+/*.log
+nodes.json
+test*
+configurations.json
