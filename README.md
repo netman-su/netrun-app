@@ -58,7 +58,13 @@ n.scan(device_ip="192.168.1.1", device_id="cisco_ios")
 n.scan()
 ```
 
-Netrun can also import devices from a CSV file using the scan_file() method. The CSV file should have three columns: IP address, device ID, and track status.
+Netrun can also import devices from a CSV file using the scan_file() method. The CSV file requires one column and supports one optional column: IP address and device ID.
+
+```bash
+192.168.1.1
+192.168.1.2,cisco_ios
+192.168.1.3
+```
 
 ```python
 n.scan_file("devices.csv")
@@ -67,7 +73,7 @@ n.scan_file("devices.csv")
 Additionally, you can just run both of these from the command line. You can provide arguments to scan specific devices or import devices from a CSV file. For example:
 
 ```bash
-python netrun -scan 192.168.1.1 cisco_ios true
+python netrun -ip 192.168.1.1
 python netrun -file \Path\To\Devices\File.csv
 ```
 

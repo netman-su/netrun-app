@@ -11,7 +11,7 @@ import config.operations as operations
 class netrun:
 
     def __init__(self) -> None:
-        self.credentials, self.netrun_update, self.devices, self.nodes = operations.initialize()
+        self.credentials, self.netrun_track, self.devices, self.nodes = operations.initialize()
 
     def validate_device_ip(self, device_ip):
         try:
@@ -19,10 +19,11 @@ class netrun:
         except ValueError:
             raise Exception(f"[{device_ip}] is not a valid IP address")
 
-    def scan(self, device_ip=None, device_id=None, track=False, device_name=None):
+    def scan(self, device_ip=None, device_id=None, device_name=None):
         data = self.nodes
         device_dict = self.devices
         credentials = self.credentials
+        track = self.netrun_track
 
         # If nothing is supplied, check every node
         if device_ip is None:
@@ -84,7 +85,7 @@ class netrun:
             }
             data[str(new_id)] = node
 
-            self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.netrun_update)
+            self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.netrun_track)
     
             # Update nodes.json
             operations.update_nodes(data)
@@ -97,16 +98,13 @@ class netrun:
         with open(file, newline='') as csvfile:
             file_reader = csv.reader(csvfile)
             for row in file_reader:
-
-                # Used to check if is in the track status field
-                if len(row) >= 3:
-                    device_ip, device_id, track_status = row[0], row[1], bool(
-                        row[2])
-                else:
-                    device_ip, device_id, track_status = row[0], row[1], False
-
                 try:
-                    self.scan(device_ip, device_id, track=track_status)
+                    if len(row) >= 2:
+                        device_ip, device_id = row[0], row[1]
+                        self.scan(device_ip, device_id)
+                    else:
+                        device_ip = row[0]
+                        self.scan(device_ip)
                 except Exception as e:
                     print(e)
 
@@ -191,8 +189,8 @@ class netrun:
         
         return latest
     
-    def update_netrun_db(self, model, version, latest, netrun_update = bool):
-            if netrun_update == True:
+    def update_netrun_db(self, model, version, latest, netrun_track = bool):
+            if netrun_track == True:
                 if latest:
                     netrun_api.add(model, latest)
                 else:

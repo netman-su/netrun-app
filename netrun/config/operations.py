@@ -14,12 +14,12 @@ def initialize():
             with open(config_path, "r") as config_json:
                 config_json = json.load(config_json)
                 credentials = [config_json["netrun_username"], config_json["netrun_password"]]
-                netrun_update = config_json["netrun_update"]
+                netrun_track = config_json["netrun_track"]
             break
         except FileNotFoundError:
             print("Config file not found, creating")
             config = {
-                "netrun_update": True,
+                "netrun_track": True,
                 "netrun_username": input("Username for netrun SSH operations: "),
                 "netrun_password": input("Password for netrun SSH operations: "),
                 "netrun_token": input("Token for netrun API: "),
@@ -50,7 +50,7 @@ def initialize():
         except FileNotFoundError:
             raise "Device dictionary not found"
     
-    return credentials, netrun_update, devices, nodes
+    return credentials, netrun_track, devices, nodes
 
 def get_config_value(key):
     script_dir = os.path.dirname(os.path.realpath(__file__))
