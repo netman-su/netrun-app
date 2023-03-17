@@ -3,6 +3,7 @@ import csv
 import runner
 import hashlib
 import ipaddress
+import concurrent.futures
 import api.cisco_api as cisco_api
 import api.netrun_api as netrun_api
 import config.operations as operations
@@ -97,16 +98,22 @@ class netrun:
     def scan_file(self, file):
         with open(file, newline='') as csvfile:
             file_reader = csv.reader(csvfile)
-            for row in file_reader:
-                try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_row = {}
+                for row in file_reader:
                     if len(row) >= 2:
                         device_ip, device_id = row[0], row[1]
-                        self.scan(device_ip, device_id)
+                        future = executor.submit(self.scan, device_ip, device_id)
                     else:
                         device_ip = row[0]
-                        self.scan(device_ip)
-                except Exception as e:
-                    print(e)
+                        future = executor.submit(self.scan, device_ip)
+                    future_to_row[future] = row
+                for future in concurrent.futures.as_completed(future_to_row):
+                    row = future_to_row[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        print(f"Error scanning {row}: {e}")
 
     # Parsing logic for the device dictionary. This loads position logic for parsing SSH output.
     def parse_device_dict(self, device_id):
