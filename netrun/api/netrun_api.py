@@ -8,7 +8,6 @@ logging.captureWarnings(True)
 
 @lru_cache(maxsize=64)
 def add(model, version):
-
     netrun_token = operations.get_config_value("netrun_token")
     url = "https://api.netmanshop.com/netrun/add"
 
@@ -31,13 +30,12 @@ def add(model, version):
         return None
     
 @lru_cache(maxsize=64)
-def get(model, version):
+def get(model):
     netrun_token = operations.get_config_value("netrun_token")
     url = "https://api.netmanshop.com/netrun/get"
 
     payload = json.dumps({
-    "model": f"{model}",
-    "version": f"{version}"
+    "model": f"{model}"
     })
     headers = {
     'X-Netrun': 'Now this header? *slaps roof* This baby does nothing.',
@@ -49,7 +47,8 @@ def get(model, version):
 
     if response.status_code == 200:
         response_json = json.loads(response.text)
-        return response_json['result']['version']
+        latest = response_json['result']['version']
+        return latest
 
     else:
         return None

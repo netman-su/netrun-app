@@ -28,11 +28,12 @@ class netrun:
 
         # If nothing is supplied, check every node
         if device_ip is None:
+            print(f"Scanning all nodes")
             for node in data.values():
-                self.scan(device_ip=node['ip'], device_id=node['type'],
-                          credentials=credentials, device_name=node['name'], track=node['track'])
+                self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
 
         else:
+            print(f"Scanning {device_ip}")
             # Validate IP
             self.validate_device_ip(device_ip)
 
@@ -52,7 +53,7 @@ class netrun:
                 # Using Netmiko's SSHDetect module if device_id isn't supplied
                 if device_id == None:
                     print(
-                        'Device ID not provided, attempting to auto-detect device type')
+                        '  Device ID not provided, attempting to auto-detect device type')
                     device_id = runner.guesser(device_ip, credentials)
 
             # Check if supplied device_id and options are supported
@@ -63,10 +64,10 @@ class netrun:
 
             # Send runner to verify connectivity
             try:
-                print("Attempting to connect to", device_ip)
+                print("  Attempting to connect to", device_ip)
                 results, hostname = runner.runner(device_ip, device_id, credentials, [
                                                   device["show_version"], device["show_model"]], device_name)
-                print("Successfully connected to", device_ip)
+                print("  Successfully connected to", device_ip)
             except Exception as e:
                 data[str(new_id)] = {}
                 raise e
@@ -98,7 +99,7 @@ class netrun:
     def scan_file(self, file):
         with open(file, newline='') as csvfile:
             file_reader = csv.reader(csvfile)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future_to_row = {}
                 for row in file_reader:
                     if len(row) >= 2:
@@ -188,16 +189,20 @@ class netrun:
     
     def get_latest_version(self, model, version, trackable=bool):
         if trackable:
+            print("  Calling Cisco")
             latest = cisco_api.call(model, version)
             if latest is None:
-                latest = netrun_api.get(model, version)
+                print("  Cisco call failed, calling netrun db")
+                latest = netrun_api.get(model)
         if not trackable:
-            latest = netrun_api.get(model, version)
+            print("  Calling netrun db")
+            latest = netrun_api.get(model)
         
         return latest
     
     def update_netrun_db(self, model, version, latest, netrun_track = bool):
             if netrun_track == True:
+                print("  Updating netrun db")
                 if latest:
                     netrun_api.add(model, latest)
                 else:
