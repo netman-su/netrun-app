@@ -1,16 +1,19 @@
 import argparse
 from netrun import netrun
+from config import operations
 
 netrun = netrun()
 
 function_map = {
     "file": netrun.scan_file,
-    "ip": netrun.scan
+    "ip": netrun.scan,
+    "get": lambda value: print(operations.get_config_value(value, "nodes.json", return_parent=True))
 }
 
 parser = argparse.ArgumentParser(description='Run the netrun script')
 parser.add_argument('-file', metavar='<file_path>', type=str, nargs=1, help='Scan against nodes in a csv. Used for quick additions of nodes.', required=False)
 parser.add_argument('-ip', metavar='<ip>', type=str, nargs=1, help='IP address to scan', required=False)
+parser.add_argument('-get', metavar='<value>', type=str, nargs=1, help='Return a node', required=False)
 
 args = parser.parse_args()
 
@@ -27,4 +30,3 @@ else:
                 argument_value[i] = False
         function = function_map.get(argument_name)
         function(*argument_value)
-

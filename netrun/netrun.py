@@ -26,73 +26,74 @@ class netrun:
         credentials = self.credentials
         track = self.netrun_track
 
-        # If nothing is supplied, check every node
+        # If no device_ip is provided, scan all nodes.
         if device_ip is None:
-            print(f"Scanning all nodes")
+            print("Scanning all nodes")
             for node in data.values():
                 self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
+            return
 
-        else:
-            print(f"Scanning {device_ip}")
-            # Validate IP
-            self.validate_device_ip(device_ip)
+        print(f"Scanning {device_ip}")
+        # Validate IP address.
+        self.validate_device_ip(device_ip)
 
-            # Check if IP exists in loaded database
-            node_id_found = False
-            for d in data.values():
-                if device_ip in d.values():
-                    new_id = [i for i in data if data[i]["ip"] == device_ip][0]
-                    device_id = data[str(new_id)]['type']
-                    node_id_found = True
-                    break
+        # Find the node ID in the loaded database.
+        node_id_found = False
+        for d in data.values():
+            if device_ip in d.values():
+                new_id = [i for i in data if data[i]["ip"] == device_ip][0]
+                device_id = data[str(new_id)]['type']
+                node_id_found = True
+                break
 
-            # Hashing generates "unique" node IDs
-            if not node_id_found:
-                new_id = self.hash_string(device_ip, 'md5')
+        # Generate a unique node ID using hashing if not found.
+        if not node_id_found:
+            new_id = self.hash_string(device_ip, 'md5')
 
-                # Using Netmiko's SSHDetect module if device_id isn't supplied
-                if device_id == None:
-                    print(
-                        '  Device ID not provided, attempting to auto-detect device type')
-                    device_id = runner.guesser(device_ip, credentials)
+            # Attempt to auto-detect the device type if device_id is not provided.
+            if device_id is None:
+                print('Device ID not provided, attempting to auto-detect device type')
+                device_id = runner.guesser(device_ip, credentials)
 
-            # Check if supplied device_id and options are supported
-            device = device_dict.get(device_id)
-            if not device:
-                raise Exception(
-                    f"Device type [{device_id}] not found in dictionary, refer to documentation")
+        # Check if the supplied device_id is supported.
+        device = device_dict.get(device_id)
+        if not device:
+            raise Exception(f"Device type [{device_id}] not found in dictionary, refer to documentation")
 
-            # Send runner to verify connectivity
-            try:
-                print("  Attempting to connect to", device_ip)
-                results, hostname = runner.runner(device_ip, device_id, credentials, [
-                                                  device["show_version"], device["show_model"]], device_name)
-                print("  Successfully connected to", device_ip)
-            except Exception as e:
-                data[str(new_id)] = {}
-                raise e
+        # Establish and verify connectivity with the device.
+        try:
+            print(f"Attempting to connect to {device_ip}")
+            results, hostname = runner.runner(device_ip, device_id, credentials, [
+                device["show_version"], device["show_model"], device["show_run"]], device_name)
+            
+            print(f"Successfully connected to {device_ip}")
+        except Exception as e:
+            data[str(new_id)] = {}
+            raise e
 
-            # Parse first two items in results (version, model)
-            parse_dict = self.parse(device_id, results)
+        # Parse version and model information from results.
+        parsed_data = self.parse(device_id, results)
 
-            # Add node data to nodes.json dictionary object
-            node = {
-                "name": device_name if device_name else hostname,
-                "ip": device_ip,
-                "type": device_id,
-                "version": parse_dict["version"],
-                "latest": self.get_latest_version(list(parse_dict["inventory"])[0], parse_dict["version"], device["software_track"]) if track else None,
-                "track": track,
-                "inventory": parse_dict["inventory"]
-            }
-            data[str(new_id)] = node
+        # Construct node data object.
+        node = {
+            "name": device_name if device_name else hostname,
+            "ip": device_ip,
+            "type": device_id,
+            "version": parsed_data["version"],
+            "latest": self.get_latest_version(list(parsed_data["inventory"])[0], 
+                        parsed_data["version"], device["software_track"]) if track else None,
+            "track": track,
+            "inventory": parsed_data["inventory"],
+            "configuration": parsed_data["configuration"]
+        }
 
-            self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.netrun_track)
-    
-            # Update nodes.json
-            operations.update_nodes(data)
+        data[str(new_id)] = node
+        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.netrun_track)
+        
+        # Update nodes.json file.
+        operations.update_nodes(data)
 
-            return node
+        return node
 
     # Mass import with a .csv, expected order is IP, device type, track status
     # The track field looks for anything to return True, doesn't matter what you add
@@ -174,16 +175,18 @@ class netrun:
                     version = version.replace('0', '')
 
                 return {"version": version}
-
+            
     # Uses other parse functions to return a dictionary that netrun.scan() can work with
     def parse(self, device_id, results):
         positions = self.parse_device_dict(device_id)
 
+        running_config = results[2]
         model_list = results[1].splitlines()
         version_list = results[0].split()
-
+        
         parse_dict = self.parse_inventory(model_list, positions)
         parse_dict.update(self.parse_version(version_list, positions))
+        parse_dict.update({"configuration": operations.compress_config(running_config)})
 
         return parse_dict
     

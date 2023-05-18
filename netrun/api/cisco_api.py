@@ -13,8 +13,8 @@ logging.captureWarnings(True)
 def get_new_token():
 
     url = 'https://cloudsso.cisco.com/as/token.oauth2'
-    client_id = operations.get_config_value("ciscoClientId")
-    client_secret = operations.get_config_value('ciscoClientSecret')
+    client_id = operations.get_config_value("ciscoClientId", "configurations.json")
+    client_secret = operations.get_config_value('ciscoClientSecret', "configurations.json")
 
     params = {
         'grant_type': 'client_credentials',
