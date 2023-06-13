@@ -2,6 +2,7 @@ import os
 import json
 import zlib
 import base64
+import difflib
 
 def initialize():
     # File path operations
@@ -15,8 +16,8 @@ def initialize():
         try:
             with open(config_path, "r") as config_json:
                 config_json = json.load(config_json)
-                credentials = [config_json["netrun_username"], config_json["netrun_password"]]
-                netrun_track = config_json["netrun_track"]
+                credentials = [get_config_value("netrun_username", config_path), get_config_value("netrun_password", config_path)]
+                netrun_track = get_config_value("netrun_track", config_path)
             break
         except FileNotFoundError:
             print("Config file not found, creating")
@@ -54,31 +55,48 @@ def initialize():
     
     return credentials, netrun_track, devices, nodes
 
-def find_item_recursively(search_item, data, return_parent=False, search_keys=True, search_values=True):
-    for key, value in data.items():
-        if (search_keys and key == search_item) or (search_values and value == search_item):
-            return value if not return_parent else data
-        if isinstance(value, dict):
-            nested_item = find_item_recursively(search_item, value, return_parent, search_keys, search_values)
-            if nested_item is not None:
-                return nested_item
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    nested_item = find_item_recursively(search_item, item, return_parent, search_keys, search_values)
-                    if nested_item is not None:
-                        return nested_item
-    return None
+def find_item_recursively(data, search_term, return_node=False):
+    results = []
 
-def get_config_value(search_value, search_file, return_parent=False, search_keys=True, search_values=True):
+    for node_id, node_data in data.items():
+        for key, value in node_data.items():
+            if search_term == key or search_term == value:
+                if return_node:
+                    results.append(node_id)
+                else:
+                    results.append((node_id, key, value))
+            elif isinstance(value, dict):
+                for inner_key, inner_value in value.items():
+                    if search_term == inner_key or search_term in inner_value:
+                        if return_node:
+                            results.append(node_id)
+                        else:
+                            results.append((node_id, inner_key, inner_value))
+                    elif isinstance(inner_value, list):
+                        if search_term in inner_value:
+                            if return_node:
+                                results.append(node_id)
+                            else:
+                                results.append((node_id, inner_key, search_term))
+
+    return results
+
+def get_config_value(search_value, search_file, return_parent=False):
     script_dir = os.path.dirname(os.path.realpath(__file__))
     config_path = os.path.join(script_dir, search_file)
     
     with open(config_path, "r") as f:
         data = json.load(f)
-
-    return find_item_recursively(search_value, data, return_parent, search_keys, search_values)
-
+    
+    if return_parent:
+        nodes = []
+        found_nodes = find_item_recursively(data, search_value, return_node=True)
+        for node in found_nodes:
+            nodes.append(data.get(node))
+        return nodes if nodes else None
+    
+    return data.get(search_value)
+    
 def update_nodes(data):
     script_dir = os.path.dirname(os.path.realpath(__file__))
     node_path = os.path.join(script_dir, 'nodes.json')
