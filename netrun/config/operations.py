@@ -81,7 +81,7 @@ def find_item_recursively(data, search_term, return_node=False):
 
     return results
 
-def get_config_value(search_value, search_file, return_parent=False):
+def get_config_value(search_value, search_file, return_parent=False, no_config=False):
     script_dir = os.path.dirname(os.path.realpath(__file__))
     config_path = os.path.join(script_dir, search_file)
     
@@ -92,7 +92,12 @@ def get_config_value(search_value, search_file, return_parent=False):
         nodes = []
         found_nodes = find_item_recursively(data, search_value, return_node=True)
         for node in found_nodes:
-            nodes.append(data.get(node))
+            current_node = data.get(node)
+            if no_config:
+                current_node.pop('configuration')
+                nodes.append(current_node)
+            else:
+                nodes.append(current_node)
         return nodes if nodes else None
     
     return data.get(search_value)
