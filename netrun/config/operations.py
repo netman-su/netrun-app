@@ -117,3 +117,23 @@ def decompress_config(encoded_data):
     decoded_data = base64.b64decode(encoded_data.encode('utf-8'))
     decompressed_data = zlib.decompress(decoded_data)
     return decompressed_data.decode('utf-8')
+
+def version_report():
+    node_return = get_config_value("version", "nodes.json", return_parent=True, no_config=True)
+
+    # create empty dictionaries to store data
+    data = {'good': [], 'bad': []}
+    for node in node_return:
+        current = node['version']
+        latest = node['latest']
+        hostname = node['name']
+        if (current in latest) or (current == latest):
+            data['good'].append({"hostname": hostname, "current": current, "latest": latest})
+        else:
+            # create a dictionary for each iteration and append to list
+            data['bad'].append({"hostname": hostname, "current": current, "latest": latest})
+
+    # Convert dictionaries into a JSON object
+    json_data = json.dumps(data, indent=2)
+
+    return json_data
