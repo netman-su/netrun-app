@@ -10,11 +10,8 @@ logging.captureWarnings(True)
 ##    function to obtain a new OAuth 2.0 token from the authentication server
 ##
 @lru_cache(maxsize=1)
-def get_new_token():
-
+def get_new_token(client_id, client_secret):
     url = 'https://id.cisco.com/oauth2/default/v1/token'
-    client_id = operations.get_config_value("ciscoClientId", "configurations.json")
-    client_secret = operations.get_config_value('ciscoClientSecret', "configurations.json")
 
     params = {
         'grant_type': 'client_credentials',
@@ -35,12 +32,12 @@ def get_new_token():
 
 # Chaching results of the same products so we don't have to slam the Cisco API for larger queries
 @lru_cache(maxsize=64)
-def call(pid, version):
+def call(client_id, client_secret, pid, version):
 
     ## 
     ## 	obtain a token before calling the API for the first time
     ##
-    token = get_new_token()
+    token = get_new_token(client_id, client_secret)
 
     url = f"https://apix.cisco.com/software/suggestion/v2/suggestions/releases/productIds/{pid}?pageIndex=1"
 

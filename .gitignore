@@ -4,3 +4,4 @@ __pycache__
 nodes.json
 test*
 configurations.json
+*.db

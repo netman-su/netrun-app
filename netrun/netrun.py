@@ -12,7 +12,7 @@ import config.operations as operations
 class netrun:
 
     def __init__(self) -> None:
-        self.credentials, self.netrun_track, self.devices, self.nodes = operations.initialize()
+        self.config, self.devices = operations.initialize()
 
     def validate_device_ip(self, device_ip):
         try:
@@ -21,15 +21,15 @@ class netrun:
             raise Exception(f"[{device_ip}] is not a valid IP address")
 
     def scan(self, device_ip=None, device_id=None, device_name=None):
-        data = self.nodes
         device_dict = self.devices
-        credentials = self.credentials
-        track = self.netrun_track
+        credentials = [self.config['netrun_username'], self.config['netrun_password']]
+        track = self.config['netrun_track']
 
         # If no device_ip is provided, scan all nodes.
         if device_ip is None:
             print("Scanning all nodes")
-            for node in data.values():
+            data = operations.get_all_from_table('nodes')
+            for node in data:
                 self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
             return
 
@@ -39,12 +39,11 @@ class netrun:
 
         # Find the node ID in the loaded database.
         node_id_found = False
-        for d in data.values():
-            if device_ip in d.values():
-                new_id = [i for i in data if data[i]["ip"] == device_ip][0]
-                device_id = data[str(new_id)]['type']
-                node_id_found = True
-                break
+        if operations.get_from_nodes('ip', device_ip):
+            temp_var = operations.get_from_nodes('ip', device_ip)
+            new_id = temp_var[0]['node_id']
+            device_id = temp_var[0]['type']
+            node_id_found = True
 
         # Generate a unique node ID using hashing if not found.
         if not node_id_found:
@@ -87,11 +86,10 @@ class netrun:
             "configuration": parsed_data["configuration"]
         }
 
-        data[str(new_id)] = node
-        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.netrun_track)
+        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], track)
         
         # Update nodes.json file.
-        operations.update_nodes(data)
+        operations.insert_into_nodes(new_id, node)
 
         return node
 
@@ -193,13 +191,13 @@ class netrun:
     def get_latest_version(self, model, version, trackable=bool):
         if trackable:
             print("  Calling Cisco")
-            latest = cisco_api.call(model, version)
+            latest = cisco_api.call(self.config['ciscoClientId'], self.config['ciscoClientSecret'], model, version)
             if latest is None:
                 print("  Cisco call failed, calling netrun db")
-                latest = netrun_api.get(model)
+                latest = netrun_api.get(self.config['netrun_token'], model)
         if not trackable:
             print("  Calling netrun db")
-            latest = netrun_api.get(model)
+            latest = netrun_api.get(self.config['netrun_token'], model)
         
         return latest
     
@@ -207,9 +205,9 @@ class netrun:
             if netrun_track == True:
                 print("  Updating netrun db")
                 if latest:
-                    netrun_api.add(model, latest)
+                    netrun_api.add(self.config['netrun_token'], model, latest)
                 else:
-                    netrun_api.add(model, version)
+                    netrun_api.add(self.config['netrun_token'], model, version)
 
     def hash_string(self, string, algorithm):
         algorithms = {

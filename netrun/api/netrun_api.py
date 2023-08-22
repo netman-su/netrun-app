@@ -7,7 +7,7 @@ import config.operations as operations
 logging.captureWarnings(True)
 
 @lru_cache(maxsize=64)
-def add(model, version):
+def add(netrun_token, model, version):
     netrun_token = operations.get_config_value("netrun_token", "configurations.json")
     url = "https://api.netmanshop.com/netrun/add"
 
@@ -30,8 +30,7 @@ def add(model, version):
         return None
     
 @lru_cache(maxsize=64)
-def get(model):
-    netrun_token = operations.get_config_value("netrun_token", "configurations.json")
+def get(netrun_token, model):
     url = "https://api.netmanshop.com/netrun/get"
 
     payload = json.dumps({

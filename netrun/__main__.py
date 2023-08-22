@@ -9,7 +9,7 @@ function_map = {
     "file": netrun.scan_file,
     "ip": netrun.scan,
     "get": lambda value:  print(json.dumps(operations.get_config_value(value, "nodes.json", return_parent=True, no_config=True), indent=2)),
-    "report": operations.version_report
+    "report": print("Fix version report")
 }
 
 parser = argparse.ArgumentParser(description='If no option is supplied, netrun deploys against all known nodes.')
