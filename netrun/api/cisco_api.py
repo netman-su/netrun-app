@@ -32,7 +32,7 @@ def get_new_token(client_id, client_secret):
 
 # Chaching results of the same products so we don't have to slam the Cisco API for larger queries
 @lru_cache(maxsize=64)
-def call(client_id, client_secret, pid, version):
+def call(client_id, client_secret, pid):
 
     ## 
     ## 	obtain a token before calling the API for the first time

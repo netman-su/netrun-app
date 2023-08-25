@@ -17,84 +17,81 @@ class netrun:
         try:
             ipaddress.ip_address(device_ip)
         except ValueError:
-            raise Exception(f"[{device_ip}] is not a valid IP address")
+            raise Exception(f" [{device_ip}] is not a valid IP address")
 
     def scan(self, device_ip=None, device_id=None, device_name=None):
-        device_dict = self.devices
-        credentials = [self.config['netrun_username'], self.config['netrun_password']]
-        track = self.config['netrun_track']
-
-        # If no device_ip is provided, scan all nodes.
+        """
+        Scan a single device or all nodes. If no IP is provided, all nodes are scanned.
+        """
+        
+        # Handle case where no IP is provided, delegate to scan_all method
         if device_ip is None:
-            print("Scanning all nodes")
-            data = operations.get_all_from_table('nodes')
-            for node in data:
-                self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
+            self.scan_all()
             return
+        
+        print(f"Scanning [{device_ip}]")
+        self.validate_device_ip(device_ip) # Ensure the IP address is valid
+        
+        # Query for existing node information in the loaded database
+        node_entry = operations.select_from_table_search('nodes', 'ip', device_ip)
 
-        print(f"Scanning {device_ip}")
-        # Validate IP address.
-        self.validate_device_ip(device_ip)
+        if node_entry: # If node details are found in the database
+            new_id, device_id = node_entry[0]['node_id'], node_entry[0]['type']
+        else: # Generate new ID via hashing
+            new_id, device_id = self.hash_string(device_ip, 'md5'), None
+        
+        # Auto-detection of device type if ID is not provided
+        if device_id is None:
+            print(' Auto-detecting device type...')
+            device_id = runner.guesser(device_ip, [self.config['netrun_username'], self.config['netrun_password']])
+        
+        # Verify that the provided device_id exists in the devices dictionary
+        device = self.devices.get(device_id)
+        if device is None:
+            raise Exception(f" Device type [{device_id}] not found in dictionary, refer to documentation")
 
-        # Find the node ID in the loaded database.
-        node_id_found = False
-        if operations.get_from_nodes('ip', device_ip):
-            temp_var = operations.get_from_nodes('ip', device_ip)
-            new_id = temp_var[0]['node_id']
-            device_id = temp_var[0]['type']
-            node_id_found = True
-
-        # Generate a unique node ID using hashing if not found.
-        if not node_id_found:
-            new_id = self.hash_string(device_ip, 'md5')
-
-            # Attempt to auto-detect the device type if device_id is not provided.
-            if device_id is None:
-                print('Device ID not provided, attempting to auto-detect device type')
-                device_id = runner.guesser(device_ip, credentials)
-
-        # Check if the supplied device_id is supported.
-        device = device_dict.get(device_id)
-        if not device:
-            raise Exception(f"Device type [{device_id}] not found in dictionary, refer to documentation")
-
-        # Establish and verify connectivity with the device.
+        # Establish and verify connectivity with the device,
+        # then gather necessary data
         try:
-            print(f"Attempting to connect to {device_ip}")
-            results, hostname = runner.runner(device_ip, device_id, credentials, [
-                device["show_version"], device["show_model"], device["show_run"]], device_name)
-            
-            print(f"Successfully connected to {device_ip}")
+            print(f" Connecting to [{device_ip}]...")
+            commands = [device[key] for key in ["show_version", "show_model", "show_run"]]
+            results, hostname = runner.runner(device_ip, device_id, [self.config['netrun_username'], self.config['netrun_password']], commands, device_name)
         except Exception as e:
-            data[str(new_id)] = {}
             raise e
 
-        # Parse version and model information from results.
-        parsed_data = self.parse(device_id, results)
+        parsed_results = self.parse(device_id, results) # Parse version and model information from results
 
-        # Construct node data object.
+        # Construct the node data object
         node = {
-            "name": device_name if device_name else hostname,
+            "node_id": new_id,
+            "name": device_name or hostname,
             "ip": device_ip,
             "type": device_id,
-            "version": parsed_data["version"],
-            "latest": self.get_latest_version(list(parsed_data["inventory"])[0], 
-                        parsed_data["version"], device["software_track"]) if track else None,
-            "track": track,
-            "inventory": parsed_data["inventory"],
-            "configuration": parsed_data["configuration"]
+            "version": parsed_results["version"],
+            "latest": self.get_latest_version(list(parsed_results["inventory"])[0], parsed_results["version"], device["software_track"]) if self.config['netrun_track'] else None,
+            "track": self.config['netrun_track'],
+            "inventory": parsed_results["inventory"],
+            "configuration": parsed_results["configuration"]
         }
 
-        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], track)
-        
-        # Update nodes.json file.
-        operations.insert_into_nodes(new_id, node)
+        # Update local and database
+        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.config['netrun_track'])
+        operations.insert_or_update('nodes', node)
 
+        print(f" Complete.")
         return node
+    
+    def scan_all(self):
+        print("Scanning all nodes")
+        data = operations.get_all_from_table('nodes')
+        for node in data:
+            self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
+        return
 
-    # Mass import with a .csv, expected order is IP, device type, track status
-    # The track field looks for anything to return True, doesn't matter what you add
     def scan_file(self, file):
+        """
+        Mass scan against csv, only required field is device_ip
+        """
         with open(file, newline='') as csvfile:
             file_reader = csv.reader(csvfile)
             for row in file_reader:
@@ -108,99 +105,97 @@ class netrun:
                 except Exception as e:
                     print(f"Error scanning {row}: {e}")
 
-    # Parsing logic for the device dictionary. This loads position logic for parsing SSH output.
-    def parse_device_dict(self, device_id):
-        device_dict = self.devices
-        parse_logic = device_dict[device_id]["parse_logic"]
-
+    def prepare_positions(self, device_id):
+        """
+        Prepare parsing logic for the device dictionary.
+        This loads position logic for parsing SSH output.
+        """
+        parse_logic = self.devices[device_id]["parse_logic"]
+        
         return {
             "model_position": parse_logic["model_position"],
             "version_position": parse_logic["version_position"],
             "serial_position": parse_logic["serial_position"],
         }
+        
+    def parse_inventory(self, inventory_lines, positions):
+        """
+        Parses inventory lines into a structured dictionary.
+        Follows the pattern specified in `positions`.
+        """
+        inventory = {}
+        current_pid, current_sn = None, None
 
-    # Parsing logic for Cisco devices
-    def parse_inventory(self, input_list, positions):
-        parse_dict = {"inventory": {}}
+        pid_pattern = re.compile(positions["model_position"])
+        sn_pattern = re.compile(positions["serial_position"])
 
-        pid_pattern = re.compile(rf'{positions["model_position"]}')
-        sn_pattern = re.compile(rf'{positions["serial_position"]}')
+        for line in inventory_lines:
+            pid_match = pid_pattern.search(line)
+            sn_match = sn_pattern.search(line)
 
-        current_pid = None
-        current_sn = None
-
-        for line in input_list:
-            pid = re.search(pid_pattern, line)
-            sn = re.search(sn_pattern, line)
-
-            if pid:
-                current_pid = pid.group(1)
-            if sn:
-                current_sn = sn.group(1)
+            current_pid = pid_match.group(1) if pid_match else current_pid
+            current_sn = sn_match.group(1) if sn_match else current_sn
 
             if current_pid and current_sn:
-                if current_pid in parse_dict["inventory"]:
-                    if current_sn not in parse_dict["inventory"][current_pid]:
-                        parse_dict["inventory"][current_pid].append(current_sn)
-                else:
-                    parse_dict["inventory"][current_pid] = [current_sn]
-                current_pid = None
-                current_sn = None
+                inventory[current_pid] = inventory.get(current_pid, []) + [current_sn]
+                current_pid, current_sn = None, None
 
-        return parse_dict
+        return {"inventory": inventory}
+        
+    def extract_version(self, version_list, positions):
+        """
+        Extracts software version from the given list.
+        Uses regex pattern in `positions` for extraction.
+        """
+        version_pattern = re.compile(positions["version_position"])
 
-    # Parsing logic for software versioning. Works with just one for now, other vendors may make this require more functions.
-    def parse_version(self, version_list, positions):
-        version_pattern = re.compile(rf'{positions["version_position"]}')
-
-        for line in version_list:
-
-            if "," in line:
-                line = line.replace(',', '')
-
-            version = re.search(version_pattern, line)
-
-            if version:
-                version = version.string
-                if bool(re.search('\.0[1-9A-Za-z]', version)) == True:
-                    version = version.replace('0', '')
-
-                return {"version": version}
+        for line in (line.replace(",", "") for line in version_list):
+            match = version_pattern.search(line)
             
-    # Uses other parse functions to return a dictionary that netrun.scan() can work with
+            if match:
+                version = match.string
+                return {"version": version.replace('0', '') if bool(re.search('\.0[1-9A-Za-z]', version)) else version}
+        
     def parse(self, device_id, results):
-        positions = self.parse_device_dict(device_id)
+        """
+        Uses the helper functions to parse the results into a structured dictionary.
+        """
+        positions = self.prepare_positions(device_id)
 
         running_config = results[2]
         model_list = results[1].splitlines()
         version_list = results[0].split()
         
-        parse_dict = self.parse_inventory(model_list, positions)
-        parse_dict.update(self.parse_version(version_list, positions))
-        parse_dict.update({"configuration": operations.compress_config(running_config)})
+        parsed_results = self.parse_inventory(model_list, positions)
+        parsed_results.update(self.extract_version(version_list, positions))
+        parsed_results["configuration"] = operations.compress_config(running_config)
 
-        return parse_dict
+        return parsed_results
     
     def get_latest_version(self, model, version, trackable=bool):
-        if trackable:
-            print("  Calling Cisco")
+        """Fetches the latest version either from Cisco or NetMan API.
+        Uses Cisco API if trackable, otherwise hits the NetMan API"""
+        
+        if trackable and self.config.get('ciscoClientId') and self.config.get('ciscoClientSecret'):
+            print(f" Fetching latest [{model}] version from Cisco...")
             latest = cisco_api.call(self.config['ciscoClientId'], self.config['ciscoClientSecret'], model, version)
             if latest is None:
-                print("  Cisco call failed, calling netrun db")
+                print("  Cisco fetch failed, fetching NetMan...")
                 latest = netrun_api.get(self.config['netrun_token'], model)
-        if not trackable:
-            print("  Calling netrun db")
+        else:
+            print(f" Fetching latest [{model}] version from NetMan...")
             latest = netrun_api.get(self.config['netrun_token'], model)
         
         return latest
-    
-    def update_netrun_db(self, model, version, latest, netrun_track = bool):
-            if netrun_track == True:
-                print("  Updating netrun db")
-                if latest:
-                    netrun_api.add(self.config['netrun_token'], model, latest)
-                else:
-                    netrun_api.add(self.config['netrun_token'], model, version)
+        
+    def update_netrun_db(self, model, version, latest, netrun_track=bool):
+        """Updates model version in NetMan db.
+        If netrun tracking is enabled, updates either with the latest version or the provided version"""
+
+        if netrun_track and self.config.get('netrun_token'):
+            print(f" Comparing [{model} | {version}] against NetMan...")
+            version_to_add = latest or version
+            netrun_api.add(self.config['netrun_token'], model, version_to_add)
 
     def hash_string(self, string, algorithm):
         algorithms = {

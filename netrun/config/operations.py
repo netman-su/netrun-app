@@ -4,76 +4,85 @@ import zlib
 import base64
 import sqlite3
 
-# Connect to SQLite database, if it doesn't exist it will be created
-conn = sqlite3.connect('database.db')
+DB_FILE = 'database.db'
+TABLES = {
+    "config": [
+        "netrun_track TEXT", 
+        "netrun_username TEXT", 
+        "netrun_password TEXT", 
+        "netrun_token TEXT", 
+        "ciscoClientId TEXT", 
+        "ciscoClientSecret TEXT"
+    ],
+    "nodes": [
+        "node_id TEXT UNIQUE", 
+        "name TEXT", 
+        "ip TEXT", 
+        "type TEXT", 
+        "version TEXT", 
+        "latest TEXT", 
+        "track TEXT", 
+        "configuration TEXT", 
+        "inventory BLOB"
+    ],
+}
+
+conn = sqlite3.connect(DB_FILE)
 c = conn.cursor()
 
 def create_tables():
-    # Create table for configs
-    c.execute('''CREATE TABLE IF NOT EXISTS config
-                (netrun_track TEXT, netrun_username TEXT, netrun_password TEXT, netrun_token TEXT,
-                ciscoClientId TEXT, ciscoClientSecret TEXT)''')
-    # Create table for nodes
-    c.execute('''CREATE TABLE IF NOT EXISTS nodes
-                (node_id TEXT UNIQUE, name TEXT, ip TEXT, type TEXT, version TEXT, latest TEXT, track TEXT, configuration TEXT, inventory BLOB)''')
+    for table_name in TABLES:
+        c.execute(f'''
+            CREATE TABLE IF NOT EXISTS {table_name}
+            ({", ".join(TABLES[table_name])})''')
     conn.commit()
 
-def insert_into_config(config_data):
-    c.execute('''INSERT INTO config VALUES (?, ?, ?, ?, ?, ?)''', 
-                 (config_data['netrun_track'], config_data['netrun_username'], config_data['netrun_password'], config_data['netrun_token'], 
-                  config_data['ciscoClientId'], config_data['ciscoClientSecret']))
+def insert_or_update(table_name, data):
+    if table_name == "nodes":
+        # convert inventory to json
+        data['inventory'] = json.dumps(data['inventory'])
+
+    columns = ', '.join(data.keys())
+    placeholders = ', '.join('?' * len(data))
+    values = tuple(data.values())
+
+    if table_name == "nodes":
+        data_no_id = data.copy()
+        del data_no_id['node_id']
+        update_cols = ', '.join(f'{k}=excluded.{k}' for k in data_no_id.keys())
+        c.execute(f'''
+            INSERT INTO {table_name} ({columns})
+            VALUES ({placeholders})
+            ON CONFLICT(node_id) DO UPDATE 
+            SET {update_cols}
+        ''', values)
+    else:
+        c.execute(f'INSERT INTO {table_name} ({columns}) VALUES ({placeholders})', values)
+      
     conn.commit()
 
-def insert_into_nodes(node_id, node_data):
-    # Convert the inventory to json and remove it from node_data
-    inventory_json = json.dumps(node_data.pop('inventory'))
+def select_all_from_table(table_name):
+    c.execute(f'SELECT * FROM {table_name}')
+    return fetch_query_results()
 
-    # Create a tuple with all values in the correct order
-    values = (node_id, *node_data.values(), inventory_json)
+def select_from_table_search(table_name, search_field, value):
+    c.execute(f'SELECT * FROM {table_name} WHERE {search_field} = ?', (value,))
+    return fetch_query_results()
 
-    # Insert these values into the nodes table
-    # UPSERT operation (since SQLite 3.24.0)
-    c.execute('''
-        INSERT INTO nodes(node_id, name, ip, type, version, latest, track, configuration, inventory)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(node_id) DO UPDATE 
-        SET name = excluded.name, ip = excluded.ip, type = excluded.type, version = excluded.version,
-            latest = excluded.latest, track = excluded.track, configuration = excluded.configuration,
-            inventory = excluded.inventory
-    ''', values)
-    
-    conn.commit()
-
-def get_all_from_table(table_name):
-    c.execute(f'''SELECT * FROM {table_name}''')
-    # Fetch all results from the SELECT statement
+def fetch_query_results():
     rows = c.fetchall()
-    
-    # Get the column names from cursor description
-    columns = [column[0] for column in c.description]
-    
-    # Convert each row to a dictionary using column names
-    nodes = [dict(zip(columns, row)) for row in rows]
-    
-    return nodes
+    columns = get_columns()
+    results = [dict(zip(columns, row)) for row in rows]
 
-def get_from_config():
-    c.execute('''SELECT * FROM config''')
-    config = c.fetchone()
-    return config
+    # If 'inventory' exists and is an str, translate it back into a dictionary
+    for result in results:
+        if 'inventory' in result and isinstance(result['inventory'], str):
+            result['inventory'] = json.loads(result['inventory']) 
 
-def get_from_nodes(search_type, value):
-    c.execute(f'''SELECT * FROM nodes WHERE {search_type} = ?''', (value,))
-    # Fetch all results from the SELECT statement
-    rows = c.fetchall()
-    
-    # Get the column names from cursor description
-    columns = [column[0] for column in c.description]
-    
-    # Convert each row to a dictionary using column names
-    nodes = [dict(zip(columns, row)) for row in rows]
-    
-    return nodes
+    return results
+
+def get_columns():
+    return [column[0] for column in c.description]
 
 def initialize():
     create_tables()
@@ -81,22 +90,10 @@ def initialize():
     dictionary_path = os.path.join(script_dir, 'device_dictionary.json')
 
     try:
-        # Check if config data exists
-        config = get_from_config()
-        if config is None:
-            raise sqlite3.OperationalError
-        else:
-            config_data = {
-                'netrun_track': config[0],
-                'netrun_username': config[1],
-                'netrun_password': config[2],
-                'netrun_token': config[3],
-                'ciscoClientId': config[4],
-                'ciscoClientSecret': config[5]
-            }
-    except sqlite3.OperationalError:
+        config = select_all_from_table('config')[0]
+    except IndexError:
         print("Config data not found, creating")
-        config_data = {
+        config = {
             "netrun_track": input("Enter a value for netrun_track: "),
             "netrun_username": input("Username for netrun SSH operations: "),
             "netrun_password": input("Password for netrun SSH operations: "),
@@ -104,9 +101,8 @@ def initialize():
             "ciscoClientId": input("Enter Cisco Client ID for SSH operations: "),
             "ciscoClientSecret": input("Enter Cisco Client Secret for SSH operations: ")
         }
-        insert_into_config(config_data)
+        insert_or_update('config', config)
 
-    # Load device dictionary
     while True:
         try:
             with open(dictionary_path, "r") as device_json:
@@ -114,8 +110,8 @@ def initialize():
                 break
         except FileNotFoundError:
             raise "Device dictionary not found"
-
-    return config_data, devices_data
+    
+    return config, devices_data
 
 def compress_config(config_text):
     compressed_data = zlib.compress(config_text.encode('utf-8'))
@@ -126,3 +122,41 @@ def decompress_config(encoded_data):
     decoded_data = base64.b64decode(encoded_data.encode('utf-8'))
     decompressed_data = zlib.decompress(decoded_data)
     return decompressed_data.decode('utf-8')
+
+def main_get(search_term):
+    all_nodes = select_all_from_table('nodes')
+    results = []
+
+    for node in all_nodes:
+        for key, value in node.items():
+            if search_term == key or search_term == value:
+                results.append(node)
+            elif isinstance(value, dict):
+                for inner_key, inner_value in value.items():
+                    if search_term == inner_key or search_term in inner_value:
+                        results.append(node)
+                    elif isinstance(inner_value, list):
+                        if search_term in inner_value:
+                            results.append(node)
+    
+    return results
+
+def main_report():
+    node_return = select_all_from_table('nodes')
+
+    # create empty dictionaries to store data
+    data = {'bad': []}
+    for node in node_return:
+        current = node['version']
+        latest = node['latest']
+        hostname = node['name']
+        if latest and ((current in latest) or (current == latest)):
+            pass
+        else:
+            # create a dictionary for each iteration and append to list
+            data['bad'].append({"hostname": hostname, "current": current, "latest": latest})
+
+    # Convert dictionaries into a JSON object
+    json_data = json.dumps(data, indent=2)
+
+    return json_data

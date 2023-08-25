@@ -8,7 +8,6 @@ logging.captureWarnings(True)
 
 @lru_cache(maxsize=64)
 def add(netrun_token, model, version):
-    netrun_token = operations.get_config_value("netrun_token", "configurations.json")
     url = "https://api.netmanshop.com/netrun/add"
 
     payload = json.dumps({
@@ -24,7 +23,7 @@ def add(netrun_token, model, version):
     response = requests.request("POST", url, headers=headers, data=payload)
 
     if response.status_code == 200:
-        print(f"Added {model} to netrun db")
+        print(f" Added [{model} | {version}] to NetMan!")
 
     else:
         return None
