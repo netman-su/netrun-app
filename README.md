@@ -6,8 +6,6 @@
 
 Netrun is a community-driven Python application that assists with network device discovery and inventory management. Netrun uses SSH connections to retrieve device information and parses the output to build a detailed inventory of your network infrastructure.
 
-
-
 ## How it Works
 
 Netrun is a powerful tool for managing your network inventory and ensuring that your network devices are running the latest operating system (OS) versions. When Netrun connects to a device, it retrieves the model and OS version for that device, making it easy to keep track of all the devices in your network.
@@ -28,20 +26,7 @@ Clone the repository:
 Install the dependencies:
 ```bash
   pip install -r requirements.txt
-```
-
-(Optional) Create and copy the following to netrun\config\configurations.json and fill in the necessary credentials.
-```json
-{
-    "netrun_update": true,
-    "netrun_username": "SSH username",
-    "netrun_password": "SSH password",
-    "netrun_token": "token or null",
-    "ciscoClientId": "token or null",
-    "ciscoClientSecret": "token or null"
-}
-```
-    
+``` 
 ## Usage/Examples
 
 Netrun can be used to discover network devices and add them to an inventory database. The scan() method accepts the IP address of a device and, optionally, its device ID and name. If no IP address is provided, Netrun will attempt to scan all devices in the inventory.

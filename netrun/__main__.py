@@ -1,7 +1,8 @@
 import json
 import argparse
+import logging
 from netrun import netrun
-from config import operations
+from utils.database import operations
 
 netrun = netrun()
 

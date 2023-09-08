@@ -2,7 +2,7 @@ import re
 import netmiko
 
 
-def runner(ip, device_type, credentials, commands, device_name):
+def runner(ip, device_type, credentials, commands):
     output = []
 
     try:

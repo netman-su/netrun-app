@@ -2,7 +2,7 @@ import requests
 import json
 import logging
 from functools import lru_cache
-import config.operations as operations
+import utils.database.operations as operations
 
 logging.captureWarnings(True)
 
