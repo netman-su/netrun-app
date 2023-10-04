@@ -5,3 +5,5 @@ nodes.json
 test*
 configurations.json
 *.db
+baselines/
+results/

@@ -1,6 +1,4 @@
-import json
 import argparse
-import logging
 from netrun import netrun
 from utils.database import operations
 

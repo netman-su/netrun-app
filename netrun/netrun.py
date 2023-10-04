@@ -39,65 +39,72 @@ class netrun:
             ipaddress.ip_address(device_ip)
         except ValueError:
             raise Exception(f" [{device_ip}] is not a valid IP address")
-
-    def scan(self, device_ip=None, device_id=None, device_name=None):
-        """
-        Scan a single device or all nodes. If no IP is provided, all nodes are scanned.
-        """
-
-        # Handle case where no IP is provided, delegate to scan_all method
+        
+    def scan_all_if_no_IP(self, device_ip):
         if device_ip is None:
             self.scan_all()
-            return
+            return True
+        return False
 
-        self.logger.info(f"Scanning [{device_ip}]")
-        self.validate_device_ip(device_ip)  # Ensure the IP address is valid
-
-        # Query for existing node information in the loaded database
+    def validate_scanned_device(self, device_ip):
+        self.validate_device_ip(device_ip)
         node_entry = operations.select_from_table_search('nodes', 'ip', device_ip)
+        return node_entry
 
-        if node_entry:  # If node details are found in the database
+    def handle_device_not_in_db(self, device_ip, node_entry):
+        if node_entry:
             new_id, device_id = node_entry[0]['node_id'], node_entry[0]['type']
-        else:  # Generate new ID via hashing
+        else:
             new_id, device_id = self.hash_string(device_ip, 'md5'), None
+        return new_id, device_id
 
-        # Auto-detection of device type if ID is not provided
+    def infer_device_type(self, device_id, device_ip):
         if device_id is None:
             self.logger.info('Auto-detecting device type...')
             device_id = runner.guesser(device_ip, [self.config['netrun_username'], self.config['netrun_password']])
+        return device_id
 
-        # Verify that the provided device_id exists in the devices dictionary
-        device = self.devices.get(device_id)
-        if device is None:
-            raise Exception(f"Device type [{device_id}] not found in dictionary, refer to documentation")
-        
-        # Establish and verify connectivity with the device,
-        # then gather necessary data
+    def perform_device_scan(self, device, device_ip, device_id):
         try:
             self.logger.info(f"Connecting to [{device_ip}]...")
             commands = [device[key] for key in ["show_version", "show_model", "show_run"]]
             results, hostname = runner.runner(device_ip, device_id, [self.config['netrun_username'], self.config['netrun_password']], commands)
         except Exception as e:
             self.logger.exception(e)
-            raise
- 
-        parsed_results = self.parse(device_id, results)  # Parse version and model information from results
+            raise 
+        return results, hostname
 
-        # Construct the node data object
+    def construct_node(self, device_id, results, new_id, device_name, device_ip):
+        parsed_results = self.parse(device_id, results)
         node = {
             "node_id": new_id,
-            "name": device_name or hostname,
+            "name": device_name,
             "ip": device_ip,
             "type": device_id,
             "version": parsed_results["version"],
-            "latest": self.get_latest_version(list(parsed_results["inventory"])[0], parsed_results["version"],
-                                              device["software_track"]) if self.config['netrun_track'] else None,
+            "latest": self.get_latest_version(list(parsed_results["inventory"])[0], self.devices[device_id]['software_track']),
             "track": self.config['netrun_track'],
             "inventory": parsed_results["inventory"],
             "configuration": parsed_results["configuration"]
         }
+        return node
 
-        # Update local and database
+    def scan(self, device_ip=None, device_id=None, device_name=None):
+        if self.scan_all_if_no_IP(device_ip):
+            return
+
+        self.logger.info(f"Scanning [{device_ip}]")
+        node_entry = self.validate_scanned_device(device_ip)
+        new_id, device_id = self.handle_device_not_in_db(device_ip, node_entry)
+        device_id = self.infer_device_type(device_id, device_ip)
+
+        device = self.devices.get(device_id)
+        if device is None:
+            raise Exception(f"Device type [{device_id}] not found in dictionary, refer to documentation")
+        
+        results, hostname = self.perform_device_scan(device, device_ip, device_id)
+        node = self.construct_node(device_id, results, new_id, device_name if device_name else hostname, device_ip)
+
         self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.config['netrun_track'])
         operations.insert_or_update('nodes', node)
 
@@ -205,14 +212,14 @@ class netrun:
 
         return parsed_results
     
-    def get_latest_version(self, model, version, trackable=bool):
+    def get_latest_version(self, model, trackable=bool):
         """Fetches the latest version either from Cisco or NetMan API.
         Uses Cisco API if trackable, otherwise hits the NetMan API"""
         
         if trackable and self.config.get('ciscoClientId') and self.config.get('ciscoClientSecret'):
             self.logger.info(f"Fetching latest [{model}] version from Cisco...")
             latest = cisco_api.call(self.config['ciscoClientId'], self.config['ciscoClientSecret'], model)
-            if latest is None:
+            if not latest:
                 self.logger.info("Cisco fetch failed, fetching NetMan...")
                 latest = netrun_api.get(self.config['netrun_token'], model)
         else:
