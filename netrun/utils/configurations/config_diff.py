@@ -315,26 +315,26 @@ class Config_Handler:
                 return True
         return False
 
-model = 'C9300-48UN'
-net_obj = operations.main_get(model)
-net_list = []
+# model = 'C9300-48UN'
+# net_obj = operations.main_get(model)
+# net_list = []
 
-baseline_file = f"netrun\\utils\\configurations\\baselines\\{model}\\{model}.txt"
-output_file_path = f"netrun\\utils\\configurations\\results\\{model}\\baseline_vs_{{}}.txt"
+# baseline_file = f"netrun\\utils\\configurations\\baselines\\{model}\\{model}.txt"
+# output_file_path = f"netrun\\utils\\configurations\\results\\{model}\\baseline_vs_{{}}.txt"
 
-# get baseline
-with open(baseline_file, "r") as file:
-    baseline = file.readlines()
+# # get baseline
+# with open(baseline_file, "r") as file:
+#     baseline = file.readlines()
 
-for device in net_obj:
-    compare_dict = {'additional': [], 'missing': []}
-    decoded_config = operations.decompress_config(device['configuration'])
-    compare_obj = Compare(baseline, decoded_config.splitlines(), ignore_lines=f'netrun\\utils\\configurations\\baselines\\{model}\\ignore.txt')
-    missing_config = compare_obj.missing()
-    additional_config = compare_obj.additional()
-    for each in additional_config:
-        compare_dict['additional'].append(each)
-    for each in missing_config:
-        compare_dict['missing'].append(each)
+# for device in net_obj:
+#     compare_dict = {'additional': [], 'missing': []}
+#     decoded_config = operations.decompress_config(device['configuration'])
+#     compare_obj = Compare(baseline, decoded_config.splitlines(), ignore_lines=f'netrun\\utils\\configurations\\baselines\\{model}\\ignore.txt')
+#     missing_config = compare_obj.missing()
+#     additional_config = compare_obj.additional()
+#     for each in additional_config:
+#         compare_dict['additional'].append(each)
+#     for each in missing_config:
+#         compare_dict['missing'].append(each)
     
-    print(compare_dict)
+#     print(compare_dict)

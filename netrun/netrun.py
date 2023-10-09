@@ -5,9 +5,9 @@ import runner
 import hashlib
 import logging
 import ipaddress
-import utils.api.cisco_api as cisco_api
 import utils.api.netrun_api as netrun_api
 import utils.database.operations as operations
+import utils.strategies.strategies as strageties
 
 
 class netrun:
@@ -33,6 +33,13 @@ class netrun:
                 self.logger.addHandler(file_handler)
             else:
                 self.logger.addHandler(console_handler)
+
+            self.strategies = {
+                'NetMan': strageties.NetManStrategy,
+                'cisco': strageties.CiscoStrategy,
+                'palo': strageties.PaloAltoStrategy,
+                # Add new vendors here...
+            }
 
     def validate_device_ip(self, device_ip):
         try:
@@ -76,18 +83,22 @@ class netrun:
 
     def construct_node(self, device_id, results, new_id, device_name, device_ip):
         parsed_results = self.parse(device_id, results)
-        node = {
+        self.node = {
             "node_id": new_id,
             "name": device_name,
             "ip": device_ip,
             "type": device_id,
             "version": parsed_results["version"],
-            "latest": self.get_latest_version(list(parsed_results["inventory"])[0], self.devices[device_id]['software_track']),
+            "latest": None,
             "track": self.config['netrun_track'],
             "inventory": parsed_results["inventory"],
             "configuration": parsed_results["configuration"]
         }
-        return node
+
+        if self.node['track']:
+            self.node['latest'] = self.get_latest_version(self.node, self.devices[device_id]['manufacturer'], self.devices[device_id]['software_track'])
+
+        return self.node
 
     def scan(self, device_ip=None, device_id=None, device_name=None):
         if self.scan_all_if_no_IP(device_ip):
@@ -212,21 +223,26 @@ class netrun:
 
         return parsed_results
     
-    def get_latest_version(self, model, trackable=bool):
-        """Fetches the latest version either from Cisco or NetMan API.
+    def get_latest_version(self, node, company, trackable=bool):
+        """ Fetches the latest version either from Cisco or NetMan API
         Uses Cisco API if trackable, otherwise hits the NetMan API"""
+
+        strategy = self.strategies['NetMan']  # Default strategy
+
+        if trackable:
+            strategy = self.strategies[company]
+
+        strategy_instance = strategy(node, self.config, self.logger)
+        version = strategy_instance.get_version()
+
+        if not version:
+            strategy = self.strategies['NetMan']
+            strategy_instance = strategy(node, self.config, self.logger)
+            version = strategy_instance.get_version()
+            if not version:
+                return None
         
-        if trackable and self.config.get('ciscoClientId') and self.config.get('ciscoClientSecret'):
-            self.logger.info(f"Fetching latest [{model}] version from Cisco...")
-            latest = cisco_api.call(self.config['ciscoClientId'], self.config['ciscoClientSecret'], model)
-            if not latest:
-                self.logger.info("Cisco fetch failed, fetching NetMan...")
-                latest = netrun_api.get(self.config['netrun_token'], model)
-        else:
-            self.logger.info(f"Fetching latest [{model}] version from NetMan...")
-            latest = netrun_api.get(self.config['netrun_token'], model)
-        
-        return latest
+        return version
         
     def update_netrun_db(self, model, version, latest, netrun_track=bool):
         """Updates model version in NetMan db.
@@ -235,7 +251,7 @@ class netrun:
         if netrun_track and self.config.get('netrun_token'):
             version_to_add = latest or version
             self.logger.info(f"Comparing [{model} | {version_to_add}] against NetMan...")
-            netrun_api.add(self.config['netrun_token'], model, version_to_add)
+            netrun_api.add(self.config['netrun_token'], model, version_to_add, self.logger)
 
     def hash_string(self, string, algorithm):
         algorithms = {

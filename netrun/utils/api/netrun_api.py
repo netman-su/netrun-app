@@ -7,7 +7,7 @@ import utils.database.operations as operations
 logging.captureWarnings(True)
 
 @lru_cache(maxsize=64)
-def add(netrun_token, model, version):
+def add(netrun_token, model, version, logger):
     url = "https://api.netmanshop.com/netrun/add"
 
     payload = json.dumps({
@@ -23,13 +23,14 @@ def add(netrun_token, model, version):
     response = requests.request("POST", url, headers=headers, data=payload)
 
     if response.status_code == 200:
-        print(f" Added [{model} | {version}] to NetMan!")
+        logger.info(f'Added [{model} | {version}] to NetMan!')
 
     else:
+        logger.error(f'Add failed for [{model} | {version}]: {json.loads(response.text)["error"]}')
         return None
     
 @lru_cache(maxsize=64)
-def get(netrun_token, model):
+def get(netrun_token, model, logger):
     url = "https://api.netmanshop.com/netrun/get"
 
     payload = json.dumps({
@@ -49,4 +50,5 @@ def get(netrun_token, model):
         return latest
 
     else:
+        logger.error(f'Fetch failed for [{model}]: {json.loads(response.text)["error"]}')
         return None

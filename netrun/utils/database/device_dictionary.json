@@ -1,5 +1,6 @@
 {
     "cisco_ios": {
+        "manufacturer": "cisco",
         "type": "cisco_ios",
         "show_run": "show running-config view full",
         "show_version": "show version | in Software,",
@@ -12,6 +13,7 @@
         }
     },
     "cisco_xe": {
+        "manufacturer": "cisco",
         "type": "cisco_xe",
         "show_run": "show running-config view full",
         "show_version": "show version | in Cisco IOS XE Software",
@@ -24,6 +26,7 @@
         }
     },
     "cisco_nxos": {
+        "manufacturer": "cisco",
         "type": "cisco_nxos",
         "show_run": "show running-config",
         "show_version": "show version | in NXOS:",
@@ -36,11 +39,12 @@
         }
     },
     "paloalto_panos": {
+        "manufacturer": "palo",
         "type": "paloalto_panos",
         "show_run": "show config running",
         "show_version": "show system info | match sw-version:",
         "show_model": "show system info | match \"model:\\|serial:\"",
-        "software_track": false,
+        "software_track": true,
         "parse_logic": {
             "model_position": "model: ([\\w-]+)",
             "serial_position": "serial: ([\\w].\\S+)",
@@ -49,6 +53,7 @@
         }
     },
     "juniper_junos": {
+        "manufacturer": "juniper",
         "type": "juniper_junos",
         "show_run": "show configuration",
         "show_version": "show version | match boot",
