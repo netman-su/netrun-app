@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "netrun"
+version = "1.0"
+description = "Network Tool"
+authors = ["The NetMan Shop, LLC <info@netmanshop.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "netrun"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+netmiko = "*"
+requests = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

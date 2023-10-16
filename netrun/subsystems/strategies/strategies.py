@@ -1,7 +1,7 @@
 import re
-from netrun import runner
-from ..api import cisco_api
-from ..api import netrun_api
+from netrun.subsystems.runner import runner
+from netrun.subsystems.api import cisco
+from netrun.subsystems.api import netman
 
 class LatestVersionStrategy:
     def __init__(self, node: dict, credentials: dict, logger):
@@ -16,12 +16,12 @@ class LatestVersionStrategy:
 class NetManStrategy(LatestVersionStrategy):
     def get_version(self):
         self.logger.info(f"Fetching latest [{self.model}] version from NetMan...")
-        return netrun_api.get(self.credentials['netrun_token'], self.model, self.logger)
+        return netman.get(self.credentials['netrun_token'], self.model, self.logger)
 
 class CiscoStrategy(LatestVersionStrategy):
     def get_version(self):
         self.logger.info(f"Fetching latest [{self.model}] version from Cisco...")
-        return cisco_api.call(self.credentials['ciscoClientId'], self.credentials['ciscoClientSecret'], self.model)
+        return cisco.call(self.credentials['ciscoClientId'], self.credentials['ciscoClientSecret'], self.model)
 
 class PaloAltoStrategy(LatestVersionStrategy):
     def get_version(self):

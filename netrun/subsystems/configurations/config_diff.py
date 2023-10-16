@@ -1,4 +1,4 @@
-from utils.database import operations
+from netrun.subsystems.database import operations
 import re
 from collections import namedtuple
 from queue import Queue

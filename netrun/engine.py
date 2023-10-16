@@ -1,13 +1,13 @@
 import os
 import re
 import csv
-import runner
 import hashlib
 import logging
 import ipaddress
-import utils.api.netrun_api as netrun_api
-import utils.database.operations as operations
-import utils.strategies.strategies as strageties
+import netrun.subsystems.runner.runner as runner
+import netrun.subsystems.api.netman as netman
+import netrun.subsystems.database.operations as operations
+import netrun.subsystems.strategies.strategies as strategies
 
 
 class netrun:
@@ -35,9 +35,9 @@ class netrun:
                 self.logger.addHandler(console_handler)
 
             self.strategies = {
-                'NetMan': strageties.NetManStrategy,
-                'cisco': strageties.CiscoStrategy,
-                'palo': strageties.PaloAltoStrategy,
+                'NetMan': strategies.NetManStrategy,
+                'cisco': strategies.CiscoStrategy,
+                'palo': strategies.PaloAltoStrategy,
                 # Add new vendors here...
             }
 
@@ -251,7 +251,7 @@ class netrun:
         if netrun_track and self.config.get('netrun_token'):
             version_to_add = latest or version
             self.logger.info(f"Comparing [{model} | {version_to_add}] against NetMan...")
-            netrun_api.add(self.config['netrun_token'], model, version_to_add, self.logger)
+            netman.add(self.config['netrun_token'], model, version_to_add, self.logger)
 
     def hash_string(self, string, algorithm):
         algorithms = {

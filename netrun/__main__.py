@@ -1,12 +1,12 @@
 import argparse
-from netrun import netrun
-from utils.database import operations
+import netrun
+from netrun.subsystems.database import operations
 
-netrun = netrun()
+engine = netrun.engine()
 
 function_map = {
-    "file": netrun.scan_file,
-    "ip": netrun.scan,
+    "file": engine.scan_file,
+    "ip": engine.scan,
     "get": lambda value:  print(operations.main_get(value)),
     "report": operations.main_report
 }
@@ -22,7 +22,7 @@ args = parser.parse_args()
 if args.report:
     print(operations.main_report())
 elif not any(vars(args).values()):
-    netrun.scan()
+    engine.scan()
 else:
     for argument_name, argument_value in vars(args).items():
         if not argument_value:
