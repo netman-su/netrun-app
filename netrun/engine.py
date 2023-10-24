@@ -1,19 +1,18 @@
-import os
 import re
 import csv
 import hashlib
 import logging
 import ipaddress
-import netrun.subsystems.runner.runner as runner
 import netrun.subsystems.api.netman as netman
+import netrun.subsystems.runner.runner as runner
 import netrun.subsystems.database.operations as operations
 import netrun.subsystems.strategies.strategies as strategies
 
 
 class netrun:
-
     def __init__(self, log_to_file=False) -> None:
-            self.config, self.devices = operations.initialize()
+            self.db_handler = operations.DBHandler()
+            self.config, self.devices = self.db_handler.initialize()
 
             # Define logger for this class
             self.logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class netrun:
             
             if log_to_file:
                 # File handler
-                self.logfile = os.path.join(os.getcwd(), "netrun_log.txt")  # define your log file path here
+                self.logfile = self.db_handler.get_db_path('netrun_log.txt')  # define your log file path here
                 file_handler = logging.FileHandler(self.logfile)
                 file_formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s')
                 file_handler.setFormatter(file_formatter)
@@ -55,7 +54,7 @@ class netrun:
 
     def validate_scanned_device(self, device_ip):
         self.validate_device_ip(device_ip)
-        node_entry = operations.select_from_table_search('nodes', 'ip', device_ip)
+        node_entry = self.db_handler.select_from_table_search('nodes', 'ip', device_ip)
         return node_entry
 
     def handle_device_not_in_db(self, device_ip, node_entry):
@@ -117,14 +116,14 @@ class netrun:
         node = self.construct_node(device_id, results, new_id, device_name if device_name else hostname, device_ip)
 
         self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.config['netrun_track'])
-        operations.insert_or_update('nodes', node)
+        self.db_handler.insert_or_update('nodes', node)
 
         self.logger.info(f"Scan complete.")
         return node
     
     def scan_all(self):
         self.logger.info("Scanning all nodes")
-        data = operations.select_all_from_table('nodes')
+        data = self.db_handler.select_all_from_table('nodes')
         for node in data:
             try:
                 self.scan(device_ip=node['ip'], device_id=node['type'], device_name=node['name'])
@@ -219,7 +218,7 @@ class netrun:
         
         parsed_results = self.parse_inventory(model_list, positions)
         parsed_results.update(self.extract_version(version_list, positions))
-        parsed_results["configuration"] = operations.compress_config(running_config)
+        parsed_results["configuration"] = self.db_handler.compress_config(running_config)
 
         return parsed_results
     
