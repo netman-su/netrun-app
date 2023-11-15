@@ -11,9 +11,6 @@ import netrun.subsystems.strategies.strategies as strategies
 
 class netrun:
     def __init__(self, log_to_file=False) -> None:
-            self.db_handler = operations.DBHandler()
-            self.config, self.devices = self.db_handler.initialize()
-
             # Define logger for this class
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
@@ -32,6 +29,9 @@ class netrun:
                 self.logger.addHandler(file_handler)
             else:
                 self.logger.addHandler(console_handler)
+
+            self.db_handler = operations.DBHandler(self.logger)
+            self.config, self.devices = self.db_handler.initialize()
 
             self.strategies = {
                 'NetMan': strategies.NetManStrategy,

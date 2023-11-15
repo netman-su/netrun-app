@@ -3,6 +3,9 @@ import json
 import zlib
 import base64
 import sqlite3
+import getpass
+import logging
+
 
 class DBHandler:
     
@@ -28,9 +31,17 @@ class DBHandler:
         ],
     }
     
-    def __init__(self):
+    def __init__(self, logger=None):
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
+
         self.DB_FILE = self.get_db_path("database.db")
         self.conn = sqlite3.connect(self.DB_FILE)
+        self.logger.info(f"Found database at [{self.DB_FILE}]")
+
         self.c = self.conn.cursor()
     
     def get_db_path(self, db_name):
@@ -105,13 +116,26 @@ class DBHandler:
             config = self.select_all_from_table('config')[0]
         except IndexError:
             print("Config data not found, creating")
+            netrun_username = input("SSH Username: ")
+            netrun_password = getpass.getpass(prompt="SSH Password: ")
+            netrun_track = input("API usage? [True|Null]: ")
+
+            if netrun_track:
+                netrun_token = input("NetMan API Token [Key|Null]: ")
+                ciscoClientId = input("Cisco Client ID [Key|Null]: ")
+                ciscoClientSecret = input("Cisco Client Secret [Key|Null]: ")
+            else:
+                netrun_token = None
+                ciscoClientId = None
+                ciscoClientSecret = None
+
             config = {
-                "netrun_track": input("Enter a value for netrun_track: "),
-                "netrun_username": input("Username for netrun SSH operations: "),
-                "netrun_password": input("Password for netrun SSH operations: "),
-                "netrun_token": input("Token for netrun API: "),
-                "ciscoClientId": input("Enter Cisco Client ID for SSH operations: "),
-                "ciscoClientSecret": input("Enter Cisco Client Secret for SSH operations: ")
+                "netrun_username": netrun_username,
+                "netrun_password": netrun_password,
+                "netrun_track": netrun_track,
+                "netrun_token": netrun_token,
+                "ciscoClientId": ciscoClientId,
+                "ciscoClientSecret": ciscoClientSecret
             }
             self.insert_or_update('config', config)
 
@@ -122,7 +146,7 @@ class DBHandler:
                     break
             except FileNotFoundError:
                 raise "Device dictionary not found"
-        
+
         return config, devices_data
 
     def compress_config(self, config_text):
