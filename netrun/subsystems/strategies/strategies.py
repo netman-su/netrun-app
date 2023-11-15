@@ -16,12 +16,12 @@ class LatestVersionStrategy:
 class NetManStrategy(LatestVersionStrategy):
     def get_version(self):
         self.logger.info(f"Fetching latest [{self.model}] version from NetMan...")
-        return netman.get(self.credentials['netrun_token'], self.model, self.logger)
+        return netman.get(self.credentials[0].netrun_token, self.model, self.logger)
 
 class CiscoStrategy(LatestVersionStrategy):
     def get_version(self):
         self.logger.info(f"Fetching latest [{self.model}] version from Cisco...")
-        return cisco.call(self.credentials['ciscoClientId'], self.credentials['ciscoClientSecret'], self.model)
+        return cisco.call(self.credentials[0].ciscoClientId, self.credentials[0].ciscoClientSecret, self.model)
 
 class PaloAltoStrategy(LatestVersionStrategy):
     def get_version(self):

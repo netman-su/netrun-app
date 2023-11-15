@@ -11,6 +11,7 @@ packages = [{include = "netrun"}]
 python = "^3.11"
 netmiko = "*"
 requests = "*"
+sqlalchemy = "*"
 
 [build-system]
 requires = ["poetry-core"]

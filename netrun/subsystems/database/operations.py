@@ -2,152 +2,153 @@ import os
 import json
 import zlib
 import base64
-import sqlite3
 import getpass
 import logging
+from sqlalchemy import create_engine, Column, Integer, String, Text, text
+from sqlalchemy.orm import sessionmaker, validates
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class Config(Base):
+    __tablename__ = 'config'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    netrun_track = Column(Text)
+    netrun_username = Column(Text)
+    netrun_password = Column(Text)
+    netrun_token = Column(Text)
+    ciscoClientId = Column(Text)
+    ciscoClientSecret = Column(Text)
+
+
+class Node(Base):
+    __tablename__ = 'nodes'
+
+    node_id = Column(Text, primary_key=True)
+    name = Column(Text)
+    ip = Column(Text)
+    type = Column(Text)
+    version = Column(Text)
+    latest = Column(Text)
+    track = Column(Text)
+    configuration = Column(Text)
+    inventory = Column(Text)
+
+    @validates('inventory')
+    def validate_inventory(self, key, value):
+        return json.dumps(value)
 
 
 class DBHandler:
-    
-    TABLES = {
-        "config": [
-            "netrun_track TEXT", 
-            "netrun_username TEXT", 
-            "netrun_password TEXT", 
-            "netrun_token TEXT", 
-            "ciscoClientId TEXT", 
-            "ciscoClientSecret TEXT"
-        ],
-        "nodes": [
-            "node_id TEXT UNIQUE", 
-            "name TEXT", 
-            "ip TEXT", 
-            "type TEXT", 
-            "version TEXT", 
-            "latest TEXT", 
-            "track TEXT", 
-            "configuration TEXT", 
-            "inventory BLOB"
-        ],
-    }
-    
     def __init__(self, logger=None):
+
         if logger is not None:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
 
-        self.DB_FILE = self.get_db_path("database.db")
-        self.conn = sqlite3.connect(self.DB_FILE)
-        self.logger.info(f"Found database at [{self.DB_FILE}]")
-
-        self.c = self.conn.cursor()
-    
-    def get_db_path(self, db_name):
         base_dir = os.getenv('APPDATA') if os.name == 'nt' else os.path.expanduser("~")
         app_dir = os.path.join(base_dir, '.netrun')
-        if not os.path.exists(app_dir):
-            os.makedirs(app_dir)
-        full_db_path = os.path.join(app_dir, db_name)
-        return full_db_path
-    
-    def create_tables(self):
-        for table_name in self.TABLES:
-            self.c.execute(f'''
-                CREATE TABLE IF NOT EXISTS {table_name}
-                ({", ".join(self.TABLES[table_name])})
-            ''')
-        self.c.connection.commit()
+        os.makedirs(app_dir, exist_ok=True)
+        db_path = os.path.join(app_dir, "database.db")
 
-    def insert_or_update(self, table_name, data):
-        if table_name == "nodes":
-            # convert inventory to json
-            data['inventory'] = json.dumps(data['inventory'])
+        self.engine = create_engine(f'sqlite:///{db_path}')
+        session = sessionmaker(bind=self.engine)
+        self.session = session()
+        Base.metadata.create_all(self.engine)
 
-        columns = ', '.join(data.keys())
-        placeholders = ', '.join('?' * len(data))
-        values = tuple(data.values())
-
-        if table_name == "nodes":
-            data_no_id = data.copy()
-            del data_no_id['node_id']
-            update_cols = ', '.join(f'{k}=excluded.{k}' for k in data_no_id.keys())
-            self.c.execute(f'''
-                INSERT INTO {table_name} ({columns})
-                VALUES ({placeholders})
-                ON CONFLICT(node_id) DO UPDATE 
-                SET {update_cols}
-            ''', values)
-        else:
-            self.c.execute(f'INSERT INTO {table_name} ({columns}) VALUES ({placeholders})', values)
-        
-        self.c.connection.commit()
-
-    def select_all_from_table(self, table_name):
-        self.c.execute(f'SELECT * FROM {table_name}')
-        return self.fetch_query_results()
-
-    def select_from_table_search(self, table_name, search_field, value):
-        self.c.execute(f'SELECT * FROM {table_name} WHERE {search_field} = ?', (value,))
-        return self.fetch_query_results()
-
-    def fetch_query_results(self):
-        rows = self.c.fetchall()
-        columns = self.get_columns()
-        results = [dict(zip(columns, row)) for row in rows]
-
-        # If 'inventory' exists and is an str, translate it back into a dictionary
-        for result in results:
-            if 'inventory' in result and isinstance(result['inventory'], str):
-                result['inventory'] = json.loads(result['inventory']) 
-
-        return results
-
-    def get_columns(self):
-        return [column[0] for column in self.c.description]
-
-    def initialize(self):
-        self.create_tables()
         script_dir = os.path.dirname(os.path.realpath(__file__))
         dictionary_path = os.path.join(script_dir, 'device_dictionary.json')
-
-        try:
-            config = self.select_all_from_table('config')[0]
-        except IndexError:
-            print("Config data not found, creating")
-            netrun_username = input("SSH Username: ")
-            netrun_password = getpass.getpass(prompt="SSH Password: ")
-            netrun_track = input("API usage? [True|Null]: ")
-
-            if netrun_track:
-                netrun_token = input("NetMan API Token [Key|Null]: ")
-                ciscoClientId = input("Cisco Client ID [Key|Null]: ")
-                ciscoClientSecret = input("Cisco Client Secret [Key|Null]: ")
-            else:
-                netrun_token = None
-                ciscoClientId = None
-                ciscoClientSecret = None
-
-            config = {
-                "netrun_username": netrun_username,
-                "netrun_password": netrun_password,
-                "netrun_track": netrun_track,
-                "netrun_token": netrun_token,
-                "ciscoClientId": ciscoClientId,
-                "ciscoClientSecret": ciscoClientSecret
-            }
-            self.insert_or_update('config', config)
 
         while True:
             try:
                 with open(dictionary_path, "r") as device_json:
-                    devices_data = json.load(device_json)
+                    self.devices_data = json.load(device_json)
                     break
             except FileNotFoundError:
                 raise "Device dictionary not found"
+            
+        config_query = self.session.query(Config).first()
+            
+        if config_query is None:        
+            questions = [
+                {"SSH Username: ": "netrun_username"},
+                {"SSH Password: ": "netrun_password"},
+                {"API usage? [True|Null]: ": "netrun_track"},
+            ]
+        
+            add_questions_if_true = [
+                {"NetMan API Token [Key|Null]: ": "netrun_token"},
+                {"Cisco Client ID [Key|Null]: ": "ciscoClientId"},
+                {"Cisco Client Secret [Key|Null]: ": "ciscoClientSecret"},
+            ]
 
-        return config, devices_data
+            config = {}
+            for question in questions:
+                for text, key in question.items():
+                    if 'Password' in text:
+                        config[key] = getpass.getpass(prompt=text) or None
+                    else:
+                        config[key] = input(text) or None
+
+            if config['netrun_track']:
+                for question in add_questions_if_true:
+                    for text, key in question.items():
+                        config[key] = input(text) or None
+
+            self.insert_or_update_config(config)
+
+    def insert_or_update_config(self, data):
+        new_config = Config(**data)
+        self.session.merge(new_config)
+        self.session.commit()
+
+    def insert_or_update_node(self, data):
+        # data['inventory'] = json.dumps(data['inventory'])
+        new_node = Node(**data)
+        self.session.merge(new_node)
+        self.session.commit()
+
+    def get_all(self, table_name):
+        return self.session.query(globals()[table_name.capitalize()]).all()
+
+    def get_by_search(self, table_name, search_field, value):
+        model = globals()[table_name.capitalize()]
+        return self.session.query(model).filter(text(f"{search_field}=:value")).params(value=value).all()
+
+    def main_get(self, search_term):
+        all_nodes = self.get_all('node')
+        results = []
+        for node in all_nodes:
+            node.inventory = json.loads(node.inventory)
+            for key, value in node.__dict__.items():
+                if search_term == key or search_term == str(value):
+                    results.append(node)
+        
+        return results
+
+    def main_report(self):
+        node_return = self.get_all('node')
+
+        # create empty dictionaries to store data
+        data = {'bad': []}
+        for node in node_return:
+            current = node.version
+            latest = node.latest
+            hostname = node.name
+            if latest and ((current in latest) or (current == latest)):
+                pass
+            else:
+                # create a dictionary and append to list
+                data['bad'].append({"hostname": hostname, "current": current, "latest": latest})
+
+        # Convert dictionaries into a JSON object
+        json_data = json.dumps(data, indent=2)
+
+        return json_data
 
     def compress_config(self, config_text):
         compressed_data = zlib.compress(config_text.encode('utf-8'))
@@ -158,41 +159,3 @@ class DBHandler:
         decoded_data = base64.b64decode(encoded_data.encode('utf-8'))
         decompressed_data = zlib.decompress(decoded_data)
         return decompressed_data.decode('utf-8')
-
-    def main_get(self, search_term):
-        all_nodes = self.select_all_from_table('nodes')
-        results = []
-
-        for node in all_nodes:
-            for key, value in node.items():
-                if search_term == key or search_term == value:
-                    results.append(node)
-                elif isinstance(value, dict):
-                    for inner_key, inner_value in value.items():
-                        if search_term == inner_key or search_term in inner_value:
-                            results.append(node)
-                        elif isinstance(inner_value, list):
-                            if search_term in inner_value:
-                                results.append(node)
-        
-        return results
-
-    def main_report(self):
-        node_return = self.select_all_from_table('nodes')
-
-        # create empty dictionaries to store data
-        data = {'bad': []}
-        for node in node_return:
-            current = node['version']
-            latest = node['latest']
-            hostname = node['name']
-            if latest and ((current in latest) or (current == latest)):
-                pass
-            else:
-                # create a dictionary for each iteration and append to list
-                data['bad'].append({"hostname": hostname, "current": current, "latest": latest})
-
-        # Convert dictionaries into a JSON object
-        json_data = json.dumps(data, indent=2)
-
-        return json_data

@@ -31,7 +31,8 @@ class netrun:
                 self.logger.addHandler(console_handler)
 
             self.db_handler = operations.DBHandler(self.logger)
-            self.config, self.devices = self.db_handler.initialize()
+            self.config = self.db_handler.get_all('config')
+            self.devices = self.db_handler.devices_data
 
             self.strategies = {
                 'NetMan': strategies.NetManStrategy,
@@ -54,12 +55,12 @@ class netrun:
 
     def validate_scanned_device(self, device_ip):
         self.validate_device_ip(device_ip)
-        node_entry = self.db_handler.select_from_table_search('nodes', 'ip', device_ip)
+        node_entry = self.db_handler.get_by_search('node', 'ip', device_ip)
         return node_entry
 
     def handle_device_not_in_db(self, device_ip, node_entry):
         if node_entry:
-            new_id, device_id = node_entry[0]['node_id'], node_entry[0]['type']
+            new_id, device_id = node_entry[0].node_id, node_entry[0].type
         else:
             new_id, device_id = self.hash_string(device_ip, 'md5'), None
         return new_id, device_id
@@ -67,14 +68,14 @@ class netrun:
     def infer_device_type(self, device_id, device_ip):
         if device_id is None:
             self.logger.info('Auto-detecting device type...')
-            device_id = runner.guesser(device_ip, [self.config['netrun_username'], self.config['netrun_password']])
+            device_id = runner.guesser(device_ip, [self.config[0].netrun_username, self.config[0].netrun_password])
         return device_id
 
     def perform_device_scan(self, device, device_ip, device_id):
         try:
             self.logger.info(f"Connecting to [{device_ip}]...")
             commands = [device[key] for key in ["show_version", "show_model", "show_run"]]
-            results, hostname = runner.runner(device_ip, device_id, [self.config['netrun_username'], self.config['netrun_password']], commands)
+            results, hostname = runner.runner(device_ip, device_id, [self.config[0].netrun_username, self.config[0].netrun_password], commands)
         except Exception as e:
             self.logger.exception(e)
             raise 
@@ -89,7 +90,7 @@ class netrun:
             "type": device_id,
             "version": parsed_results["version"],
             "latest": None,
-            "track": self.config['netrun_track'],
+            "track": self.config[0].netrun_track,
             "inventory": parsed_results["inventory"],
             "configuration": parsed_results["configuration"]
         }
@@ -115,8 +116,8 @@ class netrun:
         results, hostname = self.perform_device_scan(device, device_ip, device_id)
         node = self.construct_node(device_id, results, new_id, device_name if device_name else hostname, device_ip)
 
-        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.config['netrun_track'])
-        self.db_handler.insert_or_update('nodes', node)
+        self.update_netrun_db(list(node["inventory"])[0], node["version"], node["latest"], self.config[0].netrun_track)
+        self.db_handler.insert_or_update_node(node)
 
         self.logger.info(f"Scan complete.")
         return node
@@ -247,10 +248,10 @@ class netrun:
         """Updates model version in NetMan db.
         If netrun tracking is enabled, updates either with the latest version or the provided version"""
 
-        if netrun_track and self.config.get('netrun_token'):
+        if netrun_track and self.config[0].netrun_token:
             version_to_add = latest or version
             self.logger.info(f"Comparing [{model} | {version_to_add}] against NetMan...")
-            netman.add(self.config['netrun_token'], model, version_to_add, self.logger)
+            netman.add(self.config[0].netrun_token, model, version_to_add, self.logger)
 
     def hash_string(self, string, algorithm):
         algorithms = {
